@@ -16,94 +16,132 @@
  */
 package org.openvv
 {
-  import flash.display.DisplayObject;
-  import flash.external.ExternalInterface;
-  import flash.events.EventDispatcher;
-  import flash.events.TimerEvent;
-  import flash.utils.Timer;
-  import org.openvv.OVVCheck;
-  import org.openvv.events.OVVEvent;
 
-  public class OVVAsset extends EventDispatcher
-  {
-    private static const IMPRESSION_THRESHOLD:Number = 20;
-    private static const IMPRESSION_DELAY:Number = 250;
-    private static const VIEWABLE_AREA_THRESHOLD:Number = 50;
+	import flash.display.Sprite;
+	import flash.events.EventDispatcher;
+	import flash.events.TimerEvent;
+	import flash.external.ExternalInterface;
+	import flash.utils.Timer;
+	import org.openvv.OVVCheck;
+	import org.openvv.events.OVVEvent;
 
-    private var _id:String;
-    private var _viewabilityCheck:OVVCheck;
-    private var _impressionTimer:Timer;
-    private var _intervalsInView:Number;
+	public class OVVAsset extends EventDispatcher
+	{
 
-    public function OVVAsset(displayedObject:DisplayObject)
-    {
-      if (!ExternalInterface.available)
-      {
-        raiseError("ExternalInterface unavailable");
-        return;
-      }
+		////////////////////////////////////////////////////////////
+		//   CONSTANTS 
+		////////////////////////////////////////////////////////////
 
-      _id = generateId();
-      _viewabilityCheck = new OVVCheck(_id, displayedObject);
+		private static const DISCERNIBLE_IMPRESSION_THRESHOLD:Number = 4;
 
-      _intervalsInView = 0;
-      _impressionTimer = new Timer(IMPRESSION_DELAY);
-      _impressionTimer.addEventListener(TimerEvent.TIMER, timerHandler);
-      _impressionTimer.start();
-    }
+		private static const IMPRESSION_DELAY:Number = 250;
 
-    public function checkViewability():Object
-    {
-      return performCheck();
-    }
+		private static const VIEWABLE_AREA_THRESHOLD:Number = 50;
 
-    private function performCheck():Object
-    {
-      var results:Object = _viewabilityCheck.checkViewability(_id);
+		private static const VIEWABLE_IMPRESSION_THRESHOLD:Number = 20;
 
-      if (!!results.error)
-        raiseError(results.error);
+		////////////////////////////////////////////////////////////
+		//   ATTRIBUTES 
+		////////////////////////////////////////////////////////////
 
-      return results;
-    }
+		private var _hasDispatchedDImp:Boolean = false;
 
-    // Every 250ms, check to see if asset is visible
-    // Count consecutive viewable results.  If asset not visible, reset count
-    // Once asset has been visible for 5s, raise impression
-    private function timerHandler(e:TimerEvent):void
-    {
-      if (checkViewability().percentViewable >= VIEWABLE_AREA_THRESHOLD)
-        _intervalsInView++;
-      else
-        _intervalsInView = 0;
+		private var _id:String;
 
-      if (_intervalsInView >= IMPRESSION_THRESHOLD)
-      {
-        raiseImpression();
-        _impressionTimer.stop();
-      }
-    }
+		private var _impressionTimer:Timer;
 
-    private function generateId():String
-    {
-      return "ovv" + Math.floor(Math.random()*1000000000).toString();
-    }
+		private var _intervalsInView:Number;
 
-    private function raiseImpression():void
-    {
-      dispatchEvent(new OVVEvent(OVVEvent.OVVImpression));
-    }
+		private var _viewabilityCheck:OVVCheck;
 
-    private function raiseLog(msg:String):void
-    {
-      var d:* = {"message":msg};
-      dispatchEvent(new OVVEvent(OVVEvent.OVVLog, d));
-    }
+		////////////////////////////////////////////////////////////
+		//   CONSTRUCTOR 
+		////////////////////////////////////////////////////////////
 
-    private function raiseError(msg:String):void
-    {
-      var d:* = {"message":msg};
-      dispatchEvent(new OVVEvent(OVVEvent.OVVError, d));
-    }
-  }
+		public function OVVAsset()
+		{
+			if (!ExternalInterface.available)
+			{
+				raiseError("ExternalInterface unavailable");
+				return;
+			}
+
+			_id = generateId();
+			_viewabilityCheck = new OVVCheck(_id);
+
+			_intervalsInView = 0;
+			_impressionTimer = new Timer(IMPRESSION_DELAY);
+			_impressionTimer.addEventListener(TimerEvent.TIMER, timerHandler);
+			_impressionTimer.start();
+		}
+
+		////////////////////////////////////////////////////////////
+		//   PUBLIC API 
+		////////////////////////////////////////////////////////////
+
+		public function checkViewability():Object
+		{
+			return performCheck();
+		}
+
+		////////////////////////////////////////////////////////////
+		//   PRIVATE METHODS 
+		////////////////////////////////////////////////////////////
+
+		private function generateId():String
+		{
+			return "ovv" + Math.floor(Math.random() * 1000000000).toString();
+		}
+
+		private function performCheck():Object
+		{
+			var results:Object = _viewabilityCheck.checkViewability(_id);
+
+			if (!!results.error)
+				raiseError(results.error);
+
+			return results;
+		}
+
+		private function raiseError(msg:String):void
+		{
+			var d:* = {"message":msg};
+			dispatchEvent(new OVVEvent(OVVEvent.OVVError, d));
+		}
+
+		private function raiseImpression():void
+		{
+			dispatchEvent(new OVVEvent(OVVEvent.OVVImpression));
+		}
+
+		private function raiseLog(msg:String):void
+		{
+			var d:* = {"message":msg};
+			dispatchEvent(new OVVEvent(OVVEvent.OVVLog, d));
+		}
+
+		// Every 250ms, check to see if asset is visible
+		// Count consecutive viewable results.  If asset not visible, reset count
+		// Once asset has been visible for 5s, raise impression
+		private function timerHandler(e:TimerEvent):void
+		{
+			var results:Object = checkViewability();
+
+			if (results['viewabilityState'] == "viewable")
+				_intervalsInView++;
+			else
+				_intervalsInView = 0;
+
+			if (_intervalsInView >= DISCERNIBLE_IMPRESSION_THRESHOLD && !_hasDispatchedDImp)
+			{
+				_hasDispatchedDImp = true;
+				dispatchEvent(new OVVEvent(OVVEvent.OVVDiscernibleImpression));
+			}
+			else if (_intervalsInView >= VIEWABLE_IMPRESSION_THRESHOLD)
+			{
+				raiseImpression();
+				_impressionTimer.stop();
+			}
+		}
+	}
 }
